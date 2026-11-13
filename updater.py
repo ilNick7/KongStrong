@@ -1,4 +1,5 @@
 import os
+import io
 import json
 import hashlib
 import requests
@@ -8,7 +9,6 @@ from datetime import datetime
 TOKEN = os.environ.get("TELEGRAM_TOKEN")
 CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID")
 
-# URL dei CSV della stagione 2026/2027 (codice 2627) su Football-Data.co.uk
 CAMPIONATI = {
     "Serie A": "https://football-data.co.uk",
     "Premier League": "https://football-data.co.uk",
@@ -17,7 +17,14 @@ CAMPIONATI = {
     "Ligue 1": "https://football-data.co.uk"
 }
 
+HEADERS = {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+}
+
 def invia_notifica(testo):
+    if not TOKEN or not CHAT_ID:
+        print("Mancano TELEGRAM_TOKEN o TELEGRAM_CHAT_ID")
+        return
     url = f"https://telegram.org{TOKEN}/sendMessage"
     requests.post(url, data={"chat_id": CHAT_ID, "text": testo, "parse_mode": "HTML"})
 
@@ -25,8 +32,14 @@ def calcola_statistiche():
     risultati = {}
     
     for nome_lega, url in CAMPIONATI.items():
-        df = pd.read_csv(url)
-        # Rimuove eventuali righe vuote o partite non ancora giocate
+        resp = requests.get(url, headers=HEADERS, timeout=20)
+        resp.raise_for_status()
+        
+        # Controllo di sicurezza: verifica che sia davvero un CSV e non una pagina HTML
+        if "<html" in resp.text.lower()[:300]:
+            raise ValueError(f"Il server ha restituito HTML invece del CSV per {nome_lega}")
+            
+        df = pd.read_csv(io.StringIO(resp.text), on_bad_lines="skip")
         df = df.dropna(subset=["HomeTeam", "AwayTeam", "HS", "AS"])
         
         squadre = sorted(df["HomeTeam"].unique())
@@ -50,12 +63,12 @@ def calcola_statistiche():
             
             risultati[nome_lega][sq] = {
                 "partite": int(partite),
-                "tiri_totali": round(tiri_tot / partite, 2),
-                "tiri_porta": round(tiri_porta / partite, 2),
-                "corner": round(corner / partite, 2),
-                "falli_fatti": round(falli_fatti / partite, 2),
-                "falli_subiti": round(falli_subiti / partite, 2),
-                "cartellini": round(cartellini / partite, 2)
+                "tiri_totali": round(float(tiri_tot / partite), 2),
+                "tiri_porta": round(float(tiri_porta / partite), 2),
+                "corner": round(float(corner / partite), 2),
+                "falli_fatti": round(float(falli_fatti / partite), 2),
+                "falli_subiti": round(float(falli_subiti / partite), 2),
+                "cartellini": round(float(cartellini / partite), 2)
             }
             
     return risultati
@@ -85,6 +98,7 @@ def main():
             f"I dati dei Top 5 campionati europei sono stati aggiornati.\n"
             f"🕒 <b>Data rilevamento:</b> {adesso}"
         )
+        print("Statistiche aggiornate e notifica inviata.")
     else:
         print("Nessuna modifica nei dati.")
 
