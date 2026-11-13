@@ -1,0 +1,39 @@
+name: Aggiorna Statistiche Calcio
+
+on:
+  schedule:
+    # Esegue lo script ogni martedì e venerdì alle 08:00 UTC (09:00 italiane)
+    - cron: '0 8 * * 2,5'
+  workflow_dispatch: # Aggiunge un pulsante per avviarlo manualmente quando vuoi
+
+permissions:
+  contents: write # Permette a GitHub di creare e aggiornare il file stats.json
+
+jobs:
+  aggiorna:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Scarica i file del repository
+        uses: actions/checkout@v4
+
+      - name: Imposta Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Installa le librerie
+        run: pip install -r requirements.txt
+
+      - name: Esegui updater.py
+        env:
+          TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: python updater.py
+
+      - name: Salva stats.json nel repository
+        run: |
+          git config --local user.email "bot@github.com"
+          git config --local user.name "Stats Bot"
+          git add stats.json
+          git diff --quiet && git diff --staged --quiet || (git commit -m "Aggiorna statistiche" && git push)
